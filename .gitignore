@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Next.js
+.next/
+out/
+
+# NestJS / build
+dist/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+
+# Generated Prisma client
+generated/
+
+# Test / coverage
+coverage/
+
+# Local AI / editor tool configuration inside backend
+backend/.agents/
+backend/.claude/
+backend/.windsurf/
