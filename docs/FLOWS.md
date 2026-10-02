@@ -18,10 +18,26 @@ Registrar huella
 Seleccionar membresía
      |
      v
-Registrar pago
+Abrir checkout
+     |
+     ├──> Membresía
+     ├──> Productos opcionales
      |
      v
-Generar ticket
+Calcular total
+     |
+     v
+Registrar uno o varios pagos
+     |
+     v
+Confirmar Sale
+     |
+     ├──> Membership
+     ├──> SaleItems
+     ├──> Payment(s)
+     ├──> FinancialTransaction(s)
+     ├──> Receipt
+     └──> AuditLog
      |
      v
 Cliente activo
@@ -62,6 +78,9 @@ Después:
 Resultado
    |
    v
+Registrar AccessLog
+   |
+   v
 Mostrar mensaje
    |
    v
@@ -84,7 +103,7 @@ Buscar referencia
   v
 ¿Existe?
   |
-  NO
+ NO
   |
   v
 HUELLA NO REGISTRADA
@@ -102,78 +121,181 @@ Regresar a espera
 
 ```text
 Email + contraseña
-        |
-        v
+       |
+       v
 Validar credenciales
-        |
-        v
+       |
+       v
 Generar JWT
-        |
-        v
+       |
+       v
 Solicitar recurso
-        |
-        v
+       |
+       v
 Validar JWT
-        |
-        v
+       |
+       v
 Validar permisos
-        |
-        v
+       |
+       v
 Ejecutar operación
 ```
 
 ---
 
-# 5. Registrar venta
+# 5. Registrar venta con carrito
 
 ```text
 Recepcionista
-      |
-      v
-Nueva venta
-      |
-      v
-Seleccionar productos
-      |
-      v
-Seleccionar cantidades
-      |
-      v
+     |
+     v
+Nueva Sale
+     |
+     v
+Abrir carrito
+     |
+     v
+Buscar / Escanear producto
+     |
+     v
+Agregar al carrito
+     |
+     v
+Modificar cantidades (+/-)
+     |
+     v
+Eliminar productos si corresponde
+     |
+     v
 Validar stock
-      |
-      v
+     |
+     v
 Validar productos vencidos
-      |
-      v
-Calcular total
-      |
-      v
-Seleccionar método de pago
-      |
-      v
+     |
+     v
+Calcular subtotal
+     |
+     v
+Aplicar descuento opcional
+     |
+     v
+Recalcular total
+     |
+     v
+Seleccionar uno o varios métodos de pago
+     |
+     v
 Confirmar
-      |
-      v
+     |
+     v
 Registrar Sale
-      |
-      ├──> SaleItems
-      |
-      ├──> Inventory decrease
-      |
-      ├──> Payment
-      |
-      ├──> FinancialTransaction
-      |
-      ├──> Receipt
-      |
-      └──> AuditLog
+     |
+     ├──> SaleItems
+     |
+     ├──> ProductBatch decrease
+     |
+     ├──> SaleItemBatch
+     |
+     ├──> Payment(s)
+     |
+     ├──> FinancialTransaction(s)
+     |
+     ├──> Receipt
+     |
+     └──> AuditLog
 ```
 
-Las operaciones relacionadas deben mantener consistencia.
+Las operaciones relacionadas deben ejecutarse manteniendo consistencia transaccional.
 
 ---
 
-# 6. Compra a proveedor
+# 6. Checkout de membresía + productos
+
+El sistema debe permitir que una membresía y productos sean adquiridos dentro de la misma operación.
+
+Ejemplo:
+
+```text
+Cliente
+   |
+   v
+Nueva Sale
+   |
+   ├──> Membresía $500
+   |
+   ├──> Proteína $850
+   |
+   └──> Bebida $30
+   |
+   v
+Subtotal
+   |
+   v
+Descuento
+   |
+   v
+Total
+   |
+   v
+Payment(s)
+   |
+   ├──> $500 CASH
+   └──> $880 CARD
+   |
+   v
+Confirmar
+   |
+   ├──> Sale
+   ├──> Membership
+   ├──> SaleItems
+   ├──> Payment(s)
+   ├──> FinancialTransaction(s)
+   └──> Receipt
+```
+
+No se deben crear dos operaciones comerciales independientes solamente por combinar una membresía y productos.
+
+---
+
+# 7. Pago dividido
+
+```text
+Sale
+ |
+ | Total = $1,300
+ |
+ +── Payment #1
+ |      $500 CASH
+ |
+ +── Payment #2
+        $800 CARD
+```
+
+Reglas:
+
+```text
+SUM(Payments.amount) = Sale.total
+```
+
+Los movimientos financieros derivados de cada pago deben conservar su método.
+
+```text
+Payment CASH
+   |
+   └──> FinancialTransaction
+             |
+             └──> CashSession
+
+Payment CARD
+   |
+   └──> FinancialTransaction
+             |
+             └──> No CashSession
+```
+
+---
+
+# 8. Compra a proveedor
 
 ```text
 Proveedor
@@ -191,23 +313,115 @@ Cantidades
 Costo
    |
    v
+Lote
+   |
+   v
 Confirmar
    |
    ├──> Purchase
    |
    ├──> PurchaseItems
    |
-   ├──> Inventory increase
+   ├──> ProductBatch increase
    |
    └──> FinancialTransaction EXPENSE
 ```
 
+El costo histórico del lote debe conservarse en `ProductBatch.purchasePrice`.
+
 ---
 
-# 7. Corrección de venta
+# 9. Consumo FEFO
 
 ```text
-Movimientos del día
+Producto
+   |
+   v
+Buscar ProductBatch
+   |
+   v
+Excluir lotes vencidos
+   |
+   v
+Ordenar por expirationDate ASC
+   |
+   v
+Seleccionar lote más próximo a vencer
+   |
+   v
+¿Cantidad suficiente?
+   /             \
+ Sí               No
+ |                 |
+ v                 v
+Consumir       Consumir lote
+cantidad       completa
+                 |
+                 v
+              Siguiente lote
+                 |
+                 v
+              Continuar
+```
+
+Cada consumo debe quedar registrado mediante:
+
+```text
+SaleItem
+   |
+   v
+SaleItemBatch
+   |
+   v
+ProductBatch
+```
+
+---
+
+# 10. Ajuste de stock
+
+```text
+Usuario autorizado
+       |
+       v
+Seleccionar lote
+       |
+       v
+Indicar cantidad
+       |
+       v
+Indicar motivo
+       |
+       v
+Validar permiso
+       |
+       v
+Actualizar ProductBatch.quantity
+       |
+       v
+Registrar AuditLog
+       |
+       └──> action = STOCK_ADJUSTED
+```
+
+Ejemplos:
+
+```text
+Producto roto
+Producto vencido
+Producto perdido
+Producto inutilizable
+Corrección de conteo
+```
+
+El ajuste no genera automáticamente un movimiento financiero.
+
+---
+
+# 11. Corrección y devolución de venta
+
+```text
+Movimientos del día / Historial
        |
        v
 Seleccionar operación
@@ -216,7 +430,7 @@ Seleccionar operación
 Ver detalle
        |
        v
-Corregir / cancelar
+Corregir / Cancelar / Devolución
        |
        v
 Introducir motivo
@@ -227,66 +441,80 @@ Validar permisos
        v
 Realizar ajuste
        |
-       ├──> Inventario
-       ├──> Finanzas
-       ├──> Ticket
-       └──> Auditoría
+       ├──> Return / ReturnItem
+       ├──> ProductBatch
+       ├──> FinancialTransaction
+       ├──> Receipt cuando corresponda
+       └──> AuditLog
 ```
 
-La operación original debe conservarse.
+La venta original debe conservarse físicamente.
 
 ---
 
-# 8. Renovación de membresía
+# 12. Renovación de membresía
+
+La renovación forma parte de un checkout.
 
 ```text
 Cliente
-  |
-  v
+   |
+   v
 Seleccionar plan
-  |
-  v
-Registrar renovación
-  |
-  v
-Registrar pago
-  |
-  v
-Crear/actualizar nueva Membership
-  |
-  v
-Registrar FinancialTransaction
-  |
-  v
-Generar Receipt
+   |
+   v
+Nueva Sale
+   |
+   v
+Registrar Membership
+   |
+   v
+Registrar uno o varios Payment
+   |
+   v
+Confirmar Sale
+   |
+   ├──> Membership
+   ├──> Payment(s)
+   ├──> FinancialTransaction(s)
+   └──> Receipt
 ```
 
 El historial de membresías anteriores debe conservarse.
 
+El precio pagado debe conservarse en la nueva membresía.
+
 ---
 
-# 9. Corte de caja
+# 13. Corte de caja
+
+Las operaciones de caja están estrictamente asociadas al usuario responsable y requieren `MANAGE_CASH`.
 
 ```text
-Abrir caja
-   |
-   v
-Registrar operaciones
-   |
-   v
+Usuario abre caja
+(MANAGE_CASH)
+       |
+       v
+Registrar apertura
+       |
+       v
+Registrar operaciones CASH
+       |
+       v
 Calcular efectivo esperado
-   |
-   v
+       |
+       v
 Contar efectivo real
-   |
-   v
+       |
+       v
 Comparar
-   |
-   v
+       |
+       v
 Diferencia
-   |
-   v
-Cerrar caja
+       |
+       v
+Usuario cierra caja
+(MANAGE_CASH)
 ```
 
 Conceptualmente:
@@ -300,7 +528,7 @@ La fórmula definitiva debe implementarse de forma consistente con las reglas de
 
 ---
 
-# 10. Dashboard
+# 14. Dashboard y Alertas Accionables
 
 El dashboard operativo puede mostrar:
 
@@ -313,11 +541,13 @@ Equipos en mantenimiento
 Ingresos de hoy
 ```
 
-Los reportes financieros completos deben depender de permisos.
+Las alertas deben permitir navegar directamente a la sección correspondiente cuando la funcionalidad esté implementada.
+
+Los reportes financieros completos dependen de permisos.
 
 ---
 
-# 11. Auditoría
+# 15. Auditoría
 
 Las operaciones importantes deben producir información suficiente para responder:
 
@@ -330,3 +560,16 @@ Las operaciones importantes deben producir información suficiente para responde
 ```
 
 cuando el tipo de operación requiera motivo.
+
+Ejemplos de acciones auditables:
+
+```text
+STOCK_ADJUSTED
+CREATE_SALE
+CANCEL_SALE
+CORRECT_SALE
+CREATE_RETURN
+CREATE_PAYMENT
+OPEN_CASH_SESSION
+CLOSE_CASH_SESSION
+```

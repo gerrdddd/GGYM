@@ -82,6 +82,8 @@ MANAGE_INVENTORY
 VIEW_FINANCIAL_REPORTS
 MANAGE_FINANCES
 
+MANAGE_CASH
+
 VIEW_AUDIT_LOG
 ```
 
@@ -122,6 +124,7 @@ VIEW_MEMBERSHIPS
 MANAGE_MEMBERSHIPS
 CREATE_SALE
 VIEW_TODAY_MOVEMENTS
+MANAGE_CASH
 ```
 
 ---
@@ -143,6 +146,7 @@ VIEW_AUDIT_LOG
 Las siguientes operaciones requieren especial atención:
 
 - Cancelación de venta.
+- Operaciones de caja y manejo de sesión de caja (apertura/cierre).
 - Corrección de operación.
 - Modificación financiera.
 - Gestión de inventario.

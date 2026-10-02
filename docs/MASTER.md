@@ -4,9 +4,7 @@
 
 Este documento es el punto de entrada principal para comprender el proyecto GYM APP.
 
-Antes de realizar cambios importantes en el proyecto, el agente debe leer este documento y consultar la documentación especializada correspondiente.
-
-La documentación se divide por responsabilidades para evitar concentrar toda la información del proyecto en un único archivo.
+Antes de realizar cambios importantes, el agente debe leer este documento y consultar la documentación especializada correspondiente.
 
 ---
 
@@ -82,30 +80,23 @@ El sistema busca reducir errores operativos, facilitar la administración del gi
 
 # 4. Arquitectura
 
-La arquitectura principal es:
-
 ```text
 Next.js
 Frontend
-    |
-    | REST API
-    v
+   |
+   | REST API
+   v
 NestJS
 Backend
-    |
-    | Prisma
-    v
+   |
+   | Prisma
+   v
 PostgreSQL
 ```
 
 El frontend no debe acceder directamente a PostgreSQL.
 
-Toda operación relacionada con datos debe pasar por el backend NestJS.
-
-Consultar:
-
-- `docs/ARCHITECTURE.md`
-- `docs/DATABASE.md`
+Toda operación relacionada con datos debe pasar por NestJS.
 
 ---
 
@@ -117,67 +108,37 @@ El sistema tiene dos experiencias principales.
 
 Es una computadora ubicada en recepción.
 
-Flujo general:
-
 ```text
 Pantalla de espera
-        |
-        v
+       |
+       v
 Cliente coloca huella
-        |
-        v
+       |
+       v
 Sistema identifica cliente
-        |
-        v
+       |
+       v
 Consulta membresía
-        |
-        v
+       |
+       v
 ¿Membresía vigente?
-      /       \
-    SÍ         NO
-    |           |
-    v           v
-Permitir      Denegar
-acceso        acceso
+     /       \
+   SÍ         NO
+   |           |
+   v           v
+Permitir     Denegar
+acceso       acceso
 ```
 
 La pantalla debe mostrar únicamente información básica para el cliente.
 
-### Acceso permitido
-
-```text
-✓ ACCESO PERMITIDO
-
-Bienvenido, Juan.
-
-Membresía válida hasta:
-15/10/2026
-```
-
-### Membresía vencida
-
-```text
-✕ ACCESO DENEGADO
-
-Tu membresía venció:
-15/09/2026
-```
-
-### Huella desconocida
-
-```text
-✕ HUELLA NO REGISTRADA
-```
-
-Después de unos segundos, la estación debe regresar automáticamente a la pantalla de espera.
+Después de mostrar el resultado, debe regresar a la pantalla de espera.
 
 ---
 
 # 6. Estación administrativa
 
 La estación administrativa es utilizada por personal autorizado.
-
-Flujo:
 
 ```text
 Login
@@ -208,23 +169,13 @@ Las rutas administrativas deben estar protegidas.
 
 El puesto laboral de una persona y sus permisos dentro del sistema son conceptos diferentes.
 
-Ejemplo:
-
-```text
-Employee
-Puesto: RECEPTIONIST
-
-UserAccount
-Rol: RECEPTIONIST
-```
-
-Pero el sistema no debe asumir que un puesto laboral determina automáticamente todos los permisos.
-
-Los permisos deben gestionarse mediante roles y permisos.
+Los permisos se gestionan mediante roles y permisos.
 
 Consultar:
 
-`docs/PERMISSIONS.md`
+```text
+docs/PERMISSIONS.md
+```
 
 ---
 
@@ -232,18 +183,16 @@ Consultar:
 
 Un cliente del gimnasio no necesita necesariamente una cuenta administrativa.
 
-El cliente utiliza principalmente:
-
 ```text
 Fingerprint
-    |
-    v
+   |
+   v
 Member
-    |
-    v
+   |
+   v
 Membership
-    |
-    v
+   |
+   v
 Access
 ```
 
@@ -251,7 +200,36 @@ No se debe crear un rol `CLIENT` únicamente para controlar el acceso mediante h
 
 ---
 
-# 9. Módulos principales
+# 9. Checkout comercial
+
+Una `Sale` representa el checkout comercial completo.
+
+Puede contener:
+
+```text
+Sale
+ ├── SaleMember(s)
+ ├── Membership(s)
+ ├── SaleItems
+ ├── Payment(s)
+ └── Receipt
+```
+
+Esto permite que en una sola operación comercial se adquieran o renueven membresías (incluso para múltiples miembros) y se compren productos.
+
+Los pagos pueden dividirse entre:
+
+```text
+CASH
+CARD
+TRANSFER
+```
+
+Cada pago debe conservarse individualmente.
+
+---
+
+# 10. Módulos principales
 
 El sistema contempla:
 
@@ -273,9 +251,7 @@ El sistema contempla:
 
 ---
 
-# 10. Prioridad general
-
-La implementación debe seguir aproximadamente este orden:
+# 11. Prioridad general
 
 ## Fase 1 — Base técnica
 
@@ -298,9 +274,12 @@ La implementación debe seguir aproximadamente este orden:
 ## Fase 3 — Clientes y membresías
 
 - Clientes.
+- Historial visual del cliente.
 - Planes.
 - Membresías.
+- Checkout.
 - Pagos.
+- Tickets.
 
 ## Fase 4 — Acceso
 
@@ -312,24 +291,36 @@ La implementación debe seguir aproximadamente este orden:
 ## Fase 5 — Inventario
 
 - Productos.
-- Stock.
+- Código de barras opcional.
+- Lotes.
+- FEFO.
 - Proveedores.
 - Compras.
 - Vencimientos.
+- Ajustes de stock.
 
 ## Fase 6 — Ventas
 
-- Ventas.
-- Pagos.
+- Carrito de ventas.
+- Búsqueda manual/escaneo.
+- Descuentos.
+- Confirmación de ventas.
+- Checkout combinado con membresías.
+- Pagos divididos.
+- Efectivo, tarjeta y transferencia.
 - Tickets.
 - Movimientos del día.
 - Correcciones.
+- Devoluciones.
+- Cancelaciones.
 
 ## Fase 7 — Finanzas
 
 - Ingresos.
 - Gastos.
+- FinancialTransaction.
 - Corte de caja.
+- CashSession.
 - Reportes.
 
 ## Fase 8 — Equipamiento
@@ -341,34 +332,35 @@ La implementación debe seguir aproximadamente este orden:
 ## Fase 9 — Dashboard y auditoría
 
 - Dashboard.
+- Alertas accionables.
 - Auditoría.
 - Indicadores.
 
 ---
 
-# 11. Regla de trabajo
+# 12. Regla de trabajo
 
 El desarrollo debe seguir:
 
 ```text
 EPIC
-  |
-  v
+ |
+ v
 USER STORY
-  |
-  v
+ |
+ v
 TASKS
-  |
-  v
+ |
+ v
 IMPLEMENTACIÓN
-  |
-  v
+ |
+ v
 PRUEBAS
-  |
-  v
+ |
+ v
 REVISIÓN
-  |
-  v
+ |
+ v
 DONE
 ```
 
@@ -378,7 +370,7 @@ Si una historia requiere modificar varias entidades o módulos relacionados, pue
 
 ---
 
-# 12. Documentación relacionada
+# 13. Documentación relacionada
 
 | Documento | Propósito |
 |---|---|
@@ -394,7 +386,7 @@ Si una historia requiere modificar varias entidades o módulos relacionados, pue
 
 ---
 
-# 13. Regla de precedencia
+# 14. Regla de precedencia
 
 Cuando exista una diferencia entre documentación y código:
 
@@ -407,7 +399,7 @@ Cuando exista una diferencia entre documentación y código:
 
 ---
 
-# 14. Principios generales
+# 15. Principios generales
 
 El proyecto prioriza:
 
@@ -426,11 +418,13 @@ No introducir tecnologías o funcionalidades fuera del alcance sin autorización
 
 ---
 
-# 15. Fuente de referencia
+# 16. Fuente de referencia
 
 El archivo:
 
-`GGYM Documento Maestro.docx`
+```text
+GGYM Documento Maestro.docx
+```
 
 es el documento maestro original del proyecto.
 

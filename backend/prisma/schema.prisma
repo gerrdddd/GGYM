@@ -1,13 +1,580 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
-  provider = "prisma-client"
+  provider = "prisma-client" 
   output   = "../generated/prisma"
 }
 
 datasource db {
   provider = "postgresql"
+}
+
+// ----------------------------------------------------
+// ENUMS
+// ----------------------------------------------------
+enum MembershipStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+  FROZEN
+}
+
+enum AccessType {
+  FINGERPRINT
+  MANUAL
+  QR
+}
+
+enum SaleStatus {
+  COMPLETED
+  CANCELLED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  TRANSFER
+}
+
+enum ProductStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum ReturnStatus {
+  COMPLETED
+  CANCELLED
+}
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+  REFUND
+  ADJUSTMENT
+}
+
+enum EquipmentStatus {
+  ACTIVE
+  INACTIVE
+  MAINTENANCE
+  RETIRED
+}
+
+enum CashSessionStatus {
+  OPEN
+  CLOSED
+}
+
+enum ActorType {
+  USER
+  SYSTEM
+}
+
+enum FingerprintStatus {
+  ACTIVE
+  INACTIVE
+}
+
+// ----------------------------------------------------
+// MODELS - PERSONAS Y SEGURIDAD
+// ----------------------------------------------------
+
+model Person {
+  id        String   @id @default(uuid())
+  firstName String
+  lastName  String
+  phone     String?
+  email     String?
+  photoUrl  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  member   Member?
+  employee Employee?
+}
+
+model Member {
+  id        String   @id @default(uuid())
+  personId  String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  person       Person        @relation(fields: [personId], references: [id], onDelete: Restrict)
+  memberships  Membership[]
+  fingerprints Fingerprint[]
+  accessLogs   AccessLog[]
+  saleMembers  SaleMember[]
+}
+
+model Employee {
+  id          String   @id @default(uuid())
+  personId    String   @unique
+  jobPosition String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  person                Person                 @relation(fields: [personId], references: [id], onDelete: Restrict)
+  userAccount           UserAccount?
+  equipmentMaintenances EquipmentMaintenance[]
+}
+
+model UserAccount {
+  id           String   @id @default(uuid())
+  employeeId   String   @unique
+  email        String   @unique
+  passwordHash String
+  status       String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  employee           Employee               @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  roles              UserRole[]
+  sales              Sale[]
+  purchases          Purchase[]
+  returns            Return[]
+  financialTx        FinancialTransaction[]
+  openedCashSessions CashSession[]          @relation("OpenedSessions")
+  closedCashSessions CashSession[]          @relation("ClosedSessions")
+  auditLogs          AuditLog[]
+}
+
+model Role {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  userRoles       UserRole[]
+  rolePermissions RolePermission[]
+}
+
+model UserRole {
+  userAccountId String
+  roleId        String
+
+  userAccount UserAccount @relation(fields: [userAccountId], references: [id], onDelete: Cascade)
+  role        Role        @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userAccountId, roleId])
+}
+
+model Permission {
+  id          String  @id @default(uuid())
+  name        String  @unique
+  description String?
+
+  rolePermissions RolePermission[]
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
+
+// ----------------------------------------------------
+// MODELS - MEMBRESÍAS Y ACCESO
+// ----------------------------------------------------
+
+model MembershipPlan {
+  id           String   @id @default(uuid())
+  name         String
+  price        Decimal  @db.Decimal(10, 2)
+  durationDays Int
+  status       String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  memberships Membership[]
+}
+
+model Membership {
+  id               String           @id @default(uuid())
+  memberId         String
+  membershipPlanId String
+  saleId           String?
+  pricePaid        Decimal          @db.Decimal(10, 2)
+  startDate        DateTime
+  endDate          DateTime
+  status           MembershipStatus
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  member         Member         @relation(fields: [memberId], references: [id], onDelete: Restrict)
+  membershipPlan MembershipPlan @relation(fields: [membershipPlanId], references: [id], onDelete: Restrict)
+  sale           Sale?          @relation(fields: [saleId], references: [id], onDelete: Restrict)
+
+  @@index([memberId])
+  @@index([endDate])
+  @@index([status])
+  @@index([saleId])
+}
+
+model Fingerprint {
+  id        String            @id @default(uuid())
+  memberId  String
+  reference String            @unique
+  status    FingerprintStatus
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  member Member @relation(fields: [memberId], references: [id], onDelete: Restrict)
+
+  @@index([reference])
+}
+
+model AccessLog {
+  id           String     @id @default(uuid())
+  memberId     String
+  accessType   AccessType
+  granted      Boolean
+  deniedReason String?
+  createdAt    DateTime   @default(now())
+
+  member Member @relation(fields: [memberId], references: [id], onDelete: Restrict)
+
+  @@index([memberId])
+  @@index([createdAt])
+}
+
+// ----------------------------------------------------
+// MODELS - INVENTARIO Y COMPRAS
+// ----------------------------------------------------
+
+model Product {
+  id            String        @id @default(uuid())
+  name          String
+  barcode       String?       @unique
+  category      String
+  description   String?
+  purchasePrice Decimal       @db.Decimal(10, 2)
+  salePrice     Decimal       @db.Decimal(10, 2)
+  minimumStock  Int           @default(0)
+  status        ProductStatus
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  batches       ProductBatch[]
+  saleItems     SaleItem[]
+  purchaseItems PurchaseItem[]
+  returnItems   ReturnItem[]
+
+  @@index([barcode])
+  @@index([status])
+}
+
+model ProductBatch {
+  id             String    @id @default(uuid())
+  productId      String
+  batchNumber    String?
+  expirationDate DateTime?
+  quantity       Int       @default(0)
+  purchasePrice  Decimal   @db.Decimal(10, 2)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  product         Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
+  saleItemBatches SaleItemBatch[]
+  purchaseItems   PurchaseItem[]
+  returnItems     ReturnItem[]
+
+  @@unique([productId, batchNumber])
+  @@unique([productId, id])
+  @@index([productId])
+  @@index([expirationDate])
+}
+
+model Supplier {
+  id        String   @id @default(uuid())
+  name      String
+  phone     String?
+  email     String?
+  status    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  purchases Purchase[]
+}
+
+model Purchase {
+  id           String   @id @default(uuid())
+  supplierId   String
+  userId       String
+  totalAmount  Decimal  @db.Decimal(10, 2)
+  purchaseDate DateTime @default(now())
+  status       String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  supplier      Supplier               @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  user          UserAccount            @relation(fields: [userId], references: [id], onDelete: Restrict)
+  purchaseItems PurchaseItem[]
+  financialTx   FinancialTransaction[]
+
+  @@index([userId])
+  @@index([supplierId])
+}
+
+model PurchaseItem {
+  id         String  @id @default(uuid())
+  purchaseId String
+  productId  String
+  batchId    String
+  quantity   Int
+  unitPrice  Decimal @db.Decimal(10, 2)
+  subtotal   Decimal @db.Decimal(10, 2)
+
+  purchase     Purchase     @relation(fields: [purchaseId], references: [id], onDelete: Restrict)
+  product      Product      @relation(fields: [productId], references: [id], onDelete: Restrict)
+  productBatch ProductBatch @relation(fields: [productId, batchId], references: [productId, id], onDelete: Restrict)
+}
+
+// ----------------------------------------------------
+// MODELS - VENTAS Y DEVOLUCIONES
+// ----------------------------------------------------
+
+model Sale {
+  id        String     @id @default(uuid())
+  userId    String
+  saleDate  DateTime   @default(now())
+  subtotal  Decimal    @db.Decimal(10, 2)
+  discount  Decimal    @db.Decimal(10, 2)
+  total     Decimal    @db.Decimal(10, 2)
+  status    SaleStatus
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  user        UserAccount            @relation(fields: [userId], references: [id], onDelete: Restrict)
+  saleMembers SaleMember[]
+  saleItems   SaleItem[]
+  payments    Payment[]
+  receipt     Receipt?
+  memberships Membership[]
+  financialTx FinancialTransaction[]
+  returns     Return[]
+
+  @@index([saleDate])
+  @@index([userId])
+  @@index([status])
+}
+
+model SaleMember {
+  saleId   String
+  memberId String
+
+  sale   Sale   @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  member Member @relation(fields: [memberId], references: [id], onDelete: Restrict)
+
+  @@id([saleId, memberId])
+  @@index([saleId])
+  @@index([memberId])
+}
+
+model SaleItem {
+  id        String  @id @default(uuid())
+  saleId    String
+  productId String
+  quantity  Int
+  unitPrice Decimal @db.Decimal(10, 2)
+  subtotal  Decimal @db.Decimal(10, 2)
+
+  sale            Sale            @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  product         Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
+  saleItemBatches SaleItemBatch[]
+  returnItems     ReturnItem[]
+
+  @@unique([id, productId])
+}
+
+model SaleItemBatch {
+  id         String @id @default(uuid())
+  saleItemId String
+  productId  String
+  batchId    String
+  quantity   Int
+
+  saleItem     SaleItem     @relation(fields: [saleItemId, productId], references: [id, productId], onDelete: Restrict)
+  productBatch ProductBatch @relation(fields: [productId, batchId], references: [productId, id], onDelete: Restrict)
+}
+
+model Payment {
+  id        String        @id @default(uuid())
+  saleId    String
+  amount    Decimal       @db.Decimal(10, 2)
+  method    PaymentMethod
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  sale                 Sale                  @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  financialTransaction FinancialTransaction?
+
+  @@index([saleId])
+}
+
+model Receipt {
+  id            String   @id @default(uuid())
+  saleId        String   @unique
+  receiptNumber String   @unique
+  issuedAt      DateTime @default(now())
+  total         Decimal  @db.Decimal(10, 2)
+  status        String
+
+  sale Sale @relation(fields: [saleId], references: [id], onDelete: Restrict)
+}
+
+model Return {
+  id          String       @id @default(uuid())
+  saleId      String
+  userId      String
+  reason      String
+  totalAmount Decimal      @db.Decimal(10, 2)
+  status      ReturnStatus
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  sale        Sale                   @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  user        UserAccount            @relation(fields: [userId], references: [id], onDelete: Restrict)
+  returnItems ReturnItem[]
+  financialTx FinancialTransaction[]
+}
+
+model ReturnItem {
+  id         String  @id @default(uuid())
+  returnId   String
+  saleItemId String
+  productId  String
+  batchId    String
+  quantity   Int
+  unitPrice  Decimal @db.Decimal(10, 2)
+  subtotal   Decimal @db.Decimal(10, 2)
+
+  returnInfo   Return       @relation(fields: [returnId], references: [id], onDelete: Restrict)
+  saleItem     SaleItem     @relation(fields: [saleItemId, productId], references: [id, productId], onDelete: Restrict)
+  product      Product      @relation(fields: [productId], references: [id], onDelete: Restrict)
+  productBatch ProductBatch @relation(fields: [productId, batchId], references: [productId, id], onDelete: Restrict)
+}
+
+// ----------------------------------------------------
+// MODELS - FINANZAS Y CAJA
+// ----------------------------------------------------
+
+model FinancialTransaction {
+  id                     String          @id @default(uuid())
+  type                   TransactionType
+  category               String
+  amount                 Decimal         @db.Decimal(10, 2)
+  description            String?
+  paymentMethod          PaymentMethod?
+  userId                 String
+  saleId                 String?
+  purchaseId             String?
+  paymentId              String?         @unique
+  equipmentMaintenanceId String?         @unique
+  returnId               String?
+  cashSessionId          String?
+  createdAt              DateTime        @default(now())
+  updatedAt              DateTime        @updatedAt
+
+  user                 UserAccount           @relation(fields: [userId], references: [id], onDelete: Restrict)
+  sale                 Sale?                 @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  purchase             Purchase?             @relation(fields: [purchaseId], references: [id], onDelete: Restrict)
+  payment              Payment?              @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  equipmentMaintenance EquipmentMaintenance? @relation(fields: [equipmentMaintenanceId], references: [id], onDelete: Restrict)
+  returnInfo           Return?               @relation(fields: [returnId], references: [id], onDelete: Restrict)
+  cashSession          CashSession?          @relation(fields: [cashSessionId], references: [id], onDelete: Restrict)
+
+  @@index([createdAt])
+  @@index([type])
+  @@index([userId])
+  @@index([saleId])
+  @@index([purchaseId])
+  @@index([paymentId])
+  @@index([returnId])
+  @@index([cashSessionId])
+}
+
+model CashSession {
+  id             String            @id @default(uuid())
+  openedById     String
+  closedById     String?
+  openedAt       DateTime          @default(now())
+  closedAt       DateTime?
+  openingAmount  Decimal           @db.Decimal(10, 2)
+  expectedAmount Decimal?          @db.Decimal(10, 2)
+  actualAmount   Decimal?          @db.Decimal(10, 2)
+  difference     Decimal?          @db.Decimal(10, 2)
+  status         CashSessionStatus
+
+  openedBy              UserAccount            @relation("OpenedSessions", fields: [openedById], references: [id], onDelete: Restrict)
+  closedBy              UserAccount?           @relation("ClosedSessions", fields: [closedById], references: [id], onDelete: Restrict)
+  financialTransactions FinancialTransaction[]
+}
+
+// ----------------------------------------------------
+// MODELS - EQUIPO
+// ----------------------------------------------------
+
+model Equipment {
+  id              String          @id @default(uuid())
+  name            String
+  category        String
+  description     String?
+  brand           String?
+  model           String?
+  serialNumber    String?         @unique
+  location        String?
+  status          EquipmentStatus
+  acquisitionDate DateTime?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  maintenances EquipmentMaintenance[]
+}
+
+model EquipmentMaintenance {
+  id                    String    @id @default(uuid())
+  equipmentId           String
+  performedByEmployeeId String?
+  providerName          String?
+  providerPhone         String?
+  providerEmail         String?
+  cost                  Decimal   @db.Decimal(10, 2)
+  maintenanceDate       DateTime
+  nextMaintenanceDate   DateTime?
+  description           String
+  type                  String
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  equipment            Equipment             @relation(fields: [equipmentId], references: [id], onDelete: Restrict)
+  performedByEmployee  Employee?             @relation(fields: [performedByEmployeeId], references: [id], onDelete: Restrict)
+  financialTransaction FinancialTransaction?
+}
+
+// ----------------------------------------------------
+// MODELS - AUDITORÍA
+// ----------------------------------------------------
+
+model AuditLog {
+  id          String    @id @default(uuid())
+  actorType   ActorType
+  userId      String?
+  action      String
+  entity      String
+  entityId    String
+  description String
+  createdAt   DateTime  @default(now())
+
+  user UserAccount? @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([entityId])
+  @@index([createdAt])
 }

@@ -1,4 +1,4 @@
-# GYM APP — Agent Instructions
+#  APP — Agent Instructions
 
 ## 1. Lectura obligatoria
 
